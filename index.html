@@ -1001,13 +1001,18 @@ function LogoEditor() {
       )}
 
       {/* ЛЕВАЯ ПАНЕЛЬ (Во весь экран на мобильных) */}
-      <div className={`fixed md:relative z-50 h-full bg-gray-800 border-r border-gray-700 flex flex-col py-4 transition-all duration-300 ${isLeftOpen ? 'translate-x-0 max-md:w-full md:w-64' : '-translate-x-full md:w-16 md:translate-x-0'}`}>
-        <div className="flex items-center justify-between px-4 mb-4">
-            <span className={`font-bold text-lg ${!isLeftOpen && 'md:hidden'}`}>Logo Editor</span>
-            <button onClick={() => setIsLeftOpen(!isLeftOpen)} className="p-1 hover:bg-gray-700 rounded max-md:hidden">
-                <ArrowRightLeft size={16} />
+      <div className={`flex items-center mb-4 transition-all duration-200 ${isLeftOpen ? 'justify-between px-4' : 'justify-center px-0'}`}>
+            <span className={`font-bold text-lg whitespace-nowrap ${!isLeftOpen && 'md:hidden'}`}>
+                Logo Editor
+            </span>
+            <button onClick={() => setIsLeftOpen(!isLeftOpen)} 
+                className={`hover:bg-gray-700 rounded-xl transition-all duration-200 flex items-center justify-center max-md:hidden text-gray-300 hover:text-white ${isLeftOpen ? 'p-2' : 'w-12 h-12'}`}
+            >
+                <ArrowRightLeft size={20} />
             </button>
-            <button onClick={() => setIsLeftOpen(false)} className="p-1 hover:bg-gray-700 rounded md:hidden text-gray-400">
+            <button onClick={() => setIsLeftOpen(false)} 
+                className={`p-2 hover:bg-gray-700 rounded-xl md:hidden text-gray-400 ${!isLeftOpen && 'hidden'}`}
+            >
                 <X size={24} />
             </button>
         </div>
