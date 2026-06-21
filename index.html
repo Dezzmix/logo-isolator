@@ -31,13 +31,6 @@
       Link, Unlink, ArrowRightLeft, Palette, Zap, Contrast
     } from 'https://esm.sh/lucide-react?external=react';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  Upload, Wand2, Eraser, Crop, Download, 
-  Undo2, Redo2, MousePointer2, Settings2, Image as ImageIcon,
-  Link, Unlink, ArrowRightLeft, Palette, Zap, Contrast
-} from 'lucide-react';
-
 // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 const loadPdfJs = async () => {
@@ -304,7 +297,7 @@ function LogoEditor() {
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
         setupWorkCanvas(canvas);
       } catch (err) {
-        alert(t('err_pdf'));("Ошибка при чтении PDF. Убедитесь, что файл не поврежден.");
+        alert(t('err_pdf'));
         console.error(err);
       }
     } else {
@@ -751,7 +744,7 @@ function LogoEditor() {
     const newHeight = Math.round(baseState.height * factor);
 
     if (newWidth > 8000 || newHeight > 8000) {
-       alert(t('err_large'));("Оригинал слишком велик. Такое умножение может подвесить браузер.");
+       alert(t('err_large'));
        return;
     }
 
