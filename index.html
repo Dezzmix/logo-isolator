@@ -6,11 +6,18 @@
   <title>Logo Editor</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18",
+        "react/jsx-runtime": "https://esm.sh/react@18/jsx-runtime",
+        "react-dom/client": "https://esm.sh/react-dom@18/client",
+        "lucide-react": "https://esm.sh/lucide-react?external=react"
+      }
+    }
+  </script>
   
   <style>
     /* Предотвращаем "резиновый" скролл на мобильных устройствах при масштабировании */
@@ -1282,8 +1289,8 @@ function ToolButton({ icon, label, active, onClick }) {
 }
 
     // Рендерим приложение
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<LogoEditor />);
+	const root = createRoot(document.getElementById('root'));
+	root.render(<LogoEditor />);
   </script>
 </body>
 </html>
