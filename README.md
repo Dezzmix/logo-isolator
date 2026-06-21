@@ -1,6 +1,7 @@
-# 🎨 Logo Editor (Web App)
+# 🎨 Logo Editor (Standalone Web App)
 
-A fast, browser-based logo editing tool built with React and HTML5 Canvas. It runs entirely on the client side, ensuring your images stay private and process instantly without server delays.
+A fast, browser-based logo editing tool built with React, HTML5 Canvas, and Tailwind CSS. 
+**Zero build steps required!** It runs entirely within a single `.html` file on the client side, ensuring your images stay private and process instantly without server delays.
 
 ### ✨ Features
 * **Background Removal:** Smart Magic Wand tool with tolerance and edge smoothing (live preview).
@@ -9,47 +10,44 @@ A fast, browser-based logo editing tool built with React and HTML5 Canvas. It ru
 * **Color Effects:** Smart Grayscale (Luma formula) and solid color overlay.
 * **PDF Support:** Extract and edit logos directly from PDF files (powered by pdf.js).
 * **Touch & Mouse Support:** Fully responsive canvas with pinch-to-zoom and pan support.
+* **Bilingual:** Instantly switch between English and Russian.
 
 ### 🚀 Try it out
-[Live Demo on GitHub Pages]([https://username.github.io/repo-name](https://dezzmix.github.io/logo-isolator/))
+[Live Demo on GitHub Pages]: https://username.github.io/repo-name](https://dezzmix.github.io/logo-isolator/
+
+### 💻 Local Setup (It's extremely easy)
+You do not need Node.js, npm, or any bundlers.
+1. Download or clone the repository.
+2. Double-click the `index.html` file to open it in any modern browser (Chrome, Firefox, Safari, Edge).
+3. That's it! 
 
 ### 🛠️ Technologies
-* React (Hooks, state management)
-* Tailwind CSS (Styling)
-* HTML5 Canvas API (Image processing)
-* Lucide React (Icons)
-* PDF.js (PDF parsing)
-
-### 💻 Local Setup
-1. Clone the repository: `git clone https://github.com/username/repo-name.git`
-2. Install dependencies: `npm install`
-3. Run the development server: `npm run dev`
+* **React & ReactDOM** (via CDN)
+* **Babel Standalone** (In-browser JSX compilation)
+* **Tailwind CSS** (via CDN)
+* **Lucide React** (Icons via esm.sh)
+* **HTML5 Canvas API** (Image processing)
 
 ---
 
-# 🎨 Logo Editor (Веб-приложение)
+# 🎨 Logo Editor (Веб-приложение без сборки)
 
-Быстрый браузерный редактор логотипов, созданный на React и HTML5 Canvas. Вся обработка происходит исключительно на стороне клиента — ваши изображения никуда не отправляются и обрабатываются моментально.
+Быстрый браузерный редактор логотипов, созданный на React и HTML5 Canvas. 
+**Никаких сборок и терминалов!** Приложение работает прямо из одного `.html` файла. Вся обработка происходит исключительно на стороне клиента — ваши изображения никуда не отправляются.
 
 ### ✨ Основные возможности
-* **Удаление фона:** Умная "Волшебная палочка" с настройкой допуска оттенков и сглаживанием краев (живой предпросмотр).
-* **Улучшение качества (Upscale):** Алгоритмическое масштабирование (x2, x4) с агрессивным векторным режимом и настройкой резкости.
+* **Удаление фона:** Умная "Волшебная палочка" с настройкой допуска оттенков и сглаживанием краев.
+* **Улучшение качества (Upscale):** Алгоритмическое масштабирование (x2, x4) с векторным режимом и настройкой резкости.
 * **Обрезка и Ластик:** Авто-обрезка пустых прозрачных краев и ручной ластик.
 * **Цветовые эффекты:** Умное Ч/Б (по формуле Luma) и заливка новым цветом.
-* **Поддержка PDF:** Извлечение и редактирование логотипов напрямую из PDF-файлов (на базе pdf.js).
-* **Сенсорное управление:** Поддержка мыши и тачскринов (жесты pinch-to-zoom и панорамирование).
+* **Поддержка PDF:** Извлечение логотипов напрямую из PDF-файлов.
+* **Мультиязычность:** Мгновенное переключение между русским и английским интерфейсом.
 
 ### 🚀 Попробовать
-[Демонстрация на GitHub Pages]([https://username.github.io/repo-name](https://dezzmix.github.io/logo-isolator/))
+[Демонстрация на GitHub Pages]: https://username.github.io/repo-name](https://dezzmix.github.io/logo-isolator/
 
-### 🛠️ Технологии
-* React (Хуки, управление состоянием)
-* Tailwind CSS (Стилизация)
-* HTML5 Canvas API (Обработка изображений)
-* Lucide React (Иконки)
-* PDF.js (Парсинг PDF)
-
-### 💻 Запуск на ПК
-1. Клонируйте репозиторий: `git clone https://github.com/username/repo-name.git`
-2. Установите зависимости: `npm install`
-3. Запустите сервер разработки: `npm run dev`
+### 💻 Запуск на ПК (Очень просто)
+Вам не нужен Node.js, терминал или npm.
+1. Скачайте репозиторий.
+2. Просто откройте файл `index.html` двойным кликом в любом современном браузере.
+3. Готово! Вы можете редактировать логотипы.
