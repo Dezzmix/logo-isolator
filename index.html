@@ -227,9 +227,26 @@ const translations = {
 // --- ОСНОВНОЙ КОМПОНЕНТ ---
 
 function LogoEditor() {
-  const [lang, setLang] = useState('en'); // 'en' или 'ru'
+  const [lang, setLang] = useState('en');
   const t = (key) => translations[lang][key] || key;
-  
+
+  // Адаптивное состояние панелей
+  const [isLeftOpen, setIsLeftOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(true);
+
+  // Логика взаимоисключения меню
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      if (isLeftOpen) setIsRightOpen(false);
+    }
+  }, [isLeftOpen]);
+
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      if (isRightOpen) setIsLeftOpen(false);
+    }
+  }, [isRightOpen]);
+
   const [imageLoaded, setImageLoaded] = useState(false);
   const [activeTool, setActiveTool] = useState('select');
   const [zoom, setZoom] = useState(1);
@@ -266,6 +283,8 @@ function LogoEditor() {
   
   // Централизованная смена инструментов (Фиксирует эффекты перед переходом)
   const handleToolChange = (newTool) => {
+    // Авто-закрытие панели параметров на мобильных при выборе инструмента
+    if (window.innerWidth < 768) setIsRightOpen(true);
     // Если уходим с вкладки со сглаживанием и оно активно — сохраняем результат
     if (activeTool === 'wand' && smoothStrength > 0) {
       saveToHistory(workCanvasRef.current);
@@ -964,36 +983,36 @@ function LogoEditor() {
   return (
     <div className="flex h-screen w-full bg-gray-900 text-gray-100 font-sans overflow-hidden">
       
+      {/* Кнопка-гамбургер для мобильных (появляется только если меню закрыто) */}
+      {!isLeftOpen && (
+        <button onClick={() => setIsLeftOpen(true)} className="absolute top-4 left-4 z-50 p-2 bg-gray-800 rounded-lg md:hidden">
+          <Settings2 size={24} />
+        </button>
+      )}
+
       {/* ЛЕВАЯ ПАНЕЛЬ */}
-      <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col py-4 z-10 overflow-y-auto min-w-max">
+      <div className={`fixed md:relative z-40 h-full bg-gray-800 border-r border-gray-700 flex flex-col py-4 transition-all duration-300 ${isLeftOpen ? 'w-64 translate-x-0' : '-translate-x-full md:w-16 md:translate-x-0'}`}>
+        <div className="flex items-center justify-between px-4 mb-4">
+            <span className={`font-bold text-lg ${!isLeftOpen && 'hidden'}`}>Logo Editor</span>
+            <button onClick={() => setIsLeftOpen(!isLeftOpen)} className="p-1 hover:bg-gray-700 rounded">
+                <ArrowRightLeft size={16} />
+            </button>
+        </div>
+
         <label className="mx-4 mb-4 p-3 bg-blue-600 rounded-xl cursor-pointer hover:bg-blue-500 transition shadow-lg flex items-center justify-center space-x-2">
           <Upload size={20} />
-          <span className="font-medium text-sm">{t('upload')}</span>
-          <input type="file" className="hidden" accept="image/png, image/jpeg, image/webp, application/pdf" onChange={(e) => { if (e.target.files[0]) initImage(e.target.files[0]); }} />
+          <span className={`font-medium text-sm ${!isLeftOpen && 'hidden'}`}>{t('upload')}</span>
+          <input type="file" className="hidden" accept="image/*" onChange={(e) => { if (e.target.files[0]) initImage(e.target.files[0]); }} />
         </label>
         
-        <div className="w-full h-px bg-gray-700 mb-2"></div>
-
-        <ToolButton icon={<MousePointer2 size={20} />} label={t('move')} active={activeTool === 'select'} onClick={() => handleToolChange('select')} />
-        <ToolButton icon={<Wand2 size={20} />} label={t('bg_remove')} active={activeTool === 'wand'} onClick={() => handleToolChange('wand')} />
-        <ToolButton icon={<Crop size={20} />} label={t('crop')} active={activeTool === 'crop'} onClick={() => handleToolChange('crop')} />
-        <ToolButton icon={<Palette size={20} />} label={t('effects')} active={activeTool === 'effects'} onClick={() => handleToolChange('effects')} />
-        <ToolButton icon={<Zap size={20} />} label={t('upscale')} active={activeTool === 'upscale'} onClick={() => handleToolChange('upscale')} />
-        <ToolButton icon={<Download size={20} />} label={t('export')} active={activeTool === 'export'} onClick={() => handleToolChange('export')} />
-
-        <div className="flex-grow"></div>
-        
-        <div className="flex px-4 space-x-2 mt-4">
-          <button onClick={undo} disabled={historyIndex <= 0} className={`flex-1 flex items-center justify-center space-x-1 py-2 rounded-lg transition ${historyIndex <= 0 ? 'text-gray-600 bg-gray-800 cursor-not-allowed' : 'text-gray-300 bg-gray-700 hover:bg-gray-600'}`}>
-            <Undo2 size={16} /><span className="text-xs font-medium">{t('undo')}</span>
-          </button>
-          <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`flex-1 flex items-center justify-center space-x-1 py-2 rounded-lg transition ${historyIndex >= history.length - 1 ? 'text-gray-600 bg-gray-800 cursor-not-allowed' : 'text-gray-300 bg-gray-700 hover:bg-gray-600'}`}>
-            <Redo2 size={16} /><span className="text-xs font-medium">{t('redo')}</span>
-          </button>
+        <div className="flex-1 overflow-y-auto">
+            <ToolButton icon={<MousePointer2 size={20} />} label={isLeftOpen ? t('move') : ''} active={activeTool === 'select'} onClick={() => handleToolChange('select')} />
+            <ToolButton icon={<Wand2 size={20} />} label={isLeftOpen ? t('bg_remove') : ''} active={activeTool === 'wand'} onClick={() => handleToolChange('wand')} />
+            <ToolButton icon={<Crop size={20} />} label={isLeftOpen ? t('crop') : ''} active={activeTool === 'crop'} onClick={() => handleToolChange('crop')} />
+            <ToolButton icon={<Palette size={20} />} label={isLeftOpen ? t('effects') : ''} active={activeTool === 'effects'} onClick={() => handleToolChange('effects')} />
+            <ToolButton icon={<Zap size={20} />} label={isLeftOpen ? t('upscale') : ''} active={activeTool === 'upscale'} onClick={() => handleToolChange('upscale')} />
+            <ToolButton icon={<Download size={20} />} label={isLeftOpen ? t('export') : ''} active={activeTool === 'export'} onClick={() => handleToolChange('export')} />
         </div>
-        <button onClick={() => setLang(lang === 'ru' ? 'en' : 'ru')} className="mx-4 mt-4 mb-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm text-gray-300 transition">
-            {lang === 'ru' ? 'Switch to English' : 'Переключить на русский'}
-        </button>
       </div>
 
       {/* ХОЛСТ С ПОДДЕРЖКОЙ TOUCH */}
@@ -1021,15 +1040,15 @@ function LogoEditor() {
         <canvas ref={workCanvasRef} className="hidden" />
       </div>
 
-      {/* ПРАВАЯ ПАНЕЛЬ ПАРАМЕТРОВ */}
+      {/* ПРАВАЯ ПАНЕЛЬ */}
       {imageLoaded && (
-        <div className="w-[340px] min-w-[340px] bg-gray-800 border-l border-gray-700 p-5 flex flex-col overflow-y-auto z-10 shadow-xl">
-          <div className="flex items-center space-x-2 mb-6 text-blue-400 font-semibold">
-            <Settings2 size={20} />
-            <h2>{t('params')}</h2>
-          </div>
+        <div className={`fixed md:relative right-0 h-full bg-gray-800 border-l border-gray-700 p-5 flex flex-col z-40 transition-all duration-300 w-full md:w-[340px] ${isRightOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+           <div className="flex justify-between items-center mb-6">
+              <h2 className="text-blue-400 font-semibold flex items-center gap-2"><Settings2 size={20}/> {t('params')}</h2>
+              <button onClick={() => setIsRightOpen(false)} className="md:hidden p-2 text-gray-400">✕</button>
+           </div>
 
-          {activeTool === 'wand' && (
+			{activeTool === 'wand' && (
             <div className="space-y-5 animate-in fade-in">
               <h3 className="text-sm font-medium text-gray-300">{t('bg_remove')}</h3>
               <div>
