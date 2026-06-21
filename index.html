@@ -239,7 +239,7 @@ function LogoEditor() {
 
   // Адаптивное состояние панелей
   const [isLeftOpen, setIsLeftOpen] = useState(true);
-  const [isRightOpen, setIsRightOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(window.innerWidth >= 768);
 
   // Логика взаимоисключения меню
   useEffect(() => {
@@ -1062,7 +1062,7 @@ function LogoEditor() {
       {imageLoaded && (
         <div className={`fixed md:relative z-40 bg-gray-800 transition-all duration-300 
           md:right-0 md:h-full md:border-l md:border-gray-700 md:w-[340px]
-          max-md:bottom-0 max-md:left-0 max-md:w-full max-md:h-[50vh] max-md:border-t max-md:border-gray-700 max-md:rounded-t-2xl max-md:shadow-[0_-4px_20px_rgba(0,0,0,0.4)]
+          max-md:bottom-0 max-md:left-0 max-md:w-full max-md:h-[40vh] max-md:border-t max-md:border-gray-700 max-md:rounded-t-2xl max-md:shadow-[0_-4px_20px_rgba(0,0,0,0.4)]
           ${isRightOpen ? 'max-md:translate-y-0 md:translate-x-0' : 'max-md:translate-y-full md:translate-x-full'}`}>
           
           <div className="flex flex-col h-full w-full p-5 overflow-y-auto pb-8">
