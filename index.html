@@ -1276,13 +1276,14 @@ function LogoEditor() {
 
 function ToolButton({ icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`mx-4 my-1 p-3 rounded-xl transition-all duration-200 flex items-center space-x-3 ${ active ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-700 hover:text-white' }`}>
-      <div className="w-6 h-6 flex items-center justify-center">{icon}</div>
-      <span className="font-medium text-sm">{label}</span>
+    <button onClick={onClick} 
+      className={`mx-4 my-1 p-3 w-[calc(100%-2rem)] rounded-xl transition-all duration-200 flex items-center justify-center space-x-3 ${ active ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-700 hover:text-white' }`}
+    >
+      <div className="w-6 h-6 flex items-center justify-center shrink-0">{icon}</div>
+      {label && <span className="font-medium text-sm">{label}</span>}
     </button>
   );
 }
-
     // Рендерим приложение с помощью новой API-клиента модуля `react-dom/client`
     const root = createRoot(document.getElementById('root'));
     root.render(<LogoEditor />);
