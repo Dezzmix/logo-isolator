@@ -168,8 +168,15 @@ const translations = {
     ratio_orig: "Ориг.",
     btn_download: "Скачать файл",
     hint_canvas_1: "Холст адаптирован под мышь и тачскрин.",
-    hint_canvas_2: "Двигайте одним пальцем, используйте колесо для зума."
-	orientation: "Ориентация"
+    hint_canvas_2: "Двигайте одним пальцем, используйте колесо для зума.",
+    orientation: "Ориентация",
+    processing: "Обработка...",
+    compare: "Сравнить с оригиналом (Удерживать)",
+    bg_color_title: "Цветной фон (Подложка)",
+    bg_color_desc: "Заливает прозрачные области слоем выбранного цвета.",
+    bg_color_btn: "Добавить фон",
+    vectorize_title: "Векторизация",
+    vectorize_desc: "Автоматически превращает пиксели в математические кривые (может занять время на слабых смартфонах)."
   },
   en: {
     upload: "Upload Image",
@@ -230,8 +237,15 @@ const translations = {
     ratio_orig: "Orig.",
     btn_download: "Download File",
     hint_canvas_1: "Canvas is optimized for mouse and touchscreen.",
-    hint_canvas_2: "Move with one finger, use the wheel to zoom."
-	orientation: "Orientation"
+    hint_canvas_2: "Move with one finger, use the wheel to zoom.",
+    orientation: "Orientation",
+    processing: "Processing...",
+    compare: "Compare with original (Hold)",
+    bg_color_title: "Colored Background (Backdrop)",
+    bg_color_desc: "Fills transparent areas with the selected color.",
+    bg_color_btn: "Add Background",
+    vectorize_title: "Vectorization",
+    vectorize_desc: "Automatically converts pixels into mathematical curves (may take time on slower smartphones)."
   }
 };
 
@@ -629,12 +643,15 @@ function LogoEditor() {
       };
     `;
     const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob));
+    const blobUrl = URL.createObjectURL(blob);
+    const worker = new Worker(blobUrl);
     
     worker.onmessage = (e) => {
         ctx.putImageData(new ImageData(new Uint8ClampedArray(e.data.buffer), width, height), 0, 0);
         saveToHistory(workCanvas); renderMainCanvas();
-        setIsProcessing(false); worker.terminate();
+        setIsProcessing(false); 
+        worker.terminate();
+        URL.revokeObjectURL(blobUrl);
     };
     
     // Передаем буфер пикселей в Worker (Zero-copy передача для максимальной скорости)
@@ -1148,7 +1165,7 @@ function LogoEditor() {
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="bg-gray-800 p-4 rounded-2xl shadow-2xl flex flex-col items-center">
                 <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <span className="text-sm font-medium text-gray-200">Обработка...</span>
+                <span className="text-sm font-medium text-gray-200">{t('processing')}</span>
             </div>
         </div>
       )}
@@ -1175,7 +1192,7 @@ function LogoEditor() {
                 onPointerUp={() => { if (imageLoaded) renderMainCanvas(); }}
                 onPointerLeave={() => { if (imageLoaded) renderMainCanvas(); }}
                 className="absolute top-4 right-16 z-40 p-2.5 bg-gray-800 border border-gray-700 shadow-lg rounded-xl text-gray-200 hover:bg-gray-700 select-none touch-none md:right-4"
-                title="Сравнить с оригиналом (Удерживать)"
+                title={t('compare')}
             >
                 <Eye size={24} />
             </button>
@@ -1301,14 +1318,14 @@ function LogoEditor() {
                   </div>
                   <hr className="border-gray-700" />
                   <div>
-                    <h3 className="text-sm font-medium text-gray-300 mb-2">Цветной фон (Подложка)</h3>
-                    <p className="text-xs text-gray-400 mb-3">Заливает прозрачные области слоем выбранного цвета.</p>
+                    <h3 className="text-sm font-medium text-gray-300 mb-2">{t('bg_color_title')}</h3>
+                    <p className="text-xs text-gray-400 mb-3">{t('bg_color_desc')}</p>
                     <div className="flex items-center space-x-3 mb-4">
                       <input type="color" value={bgColorHex} onChange={(e) => setBgColorHex(e.target.value)} className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0" />
                       <span className="text-sm font-mono uppercase bg-gray-900 px-2 py-1 rounded border border-gray-700">{bgColorHex}</span>
                     </div>
                     <button onClick={applyBackground} className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition shadow-lg flex justify-center items-center space-x-2">
-                      <Layers size={16} /> <span>Добавить фон</span>
+                      <Layers size={16} /> <span>{t('bg_color_btn')}</span>
                     </button>
                   </div>
                   <hr className="border-gray-700" />
@@ -1375,8 +1392,8 @@ function LogoEditor() {
                       <div className="mt-3 flex items-start space-x-2 p-3 bg-gray-900 border border-gray-700 rounded-lg">
                          <input type="checkbox" id="vectorizeCheck" checked={exportSettings.vectorize} onChange={e => setExportSettings({...exportSettings, vectorize: e.target.checked})} className="mt-0.5 w-4 h-4 cursor-pointer text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
                          <label htmlFor="vectorizeCheck" className="text-xs text-gray-300 cursor-pointer flex-1">
-                           <span className="font-semibold block">Истинная векторизация</span>
-                           <span className="text-[10px] text-gray-500">Автоматически превращает пиксели в математические кривые (может занять время на слабых смартфонах).</span>
+                           <span className="font-semibold block">{t('vectorize_title')}</span>
+                           <span className="text-[10px] text-gray-500">{t('vectorize_desc')}</span>
                          </label>
                       </div>
                     )}
