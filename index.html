@@ -269,6 +269,8 @@ function LogoEditor() {
   useEffect(() => {
     if (window.innerWidth < 768) {
       if (isLeftOpen) setIsRightOpen(false);
+    } else {
+      setIsRightOpen(isLeftOpen);
     }
   }, [isLeftOpen]);
 
@@ -334,6 +336,8 @@ function LogoEditor() {
     if (window.innerWidth < 768) {
       setIsLeftOpen(false);
       setIsRightOpen(true);
+    } else if (!isLeftOpen) {
+      setIsLeftOpen(true);
     }
     // Сглаживание теперь живет во вкладке Upscale, сохраняем историю при уходе из нее
     if (activeTool === 'upscale' && (upscaleSettings.factor > 1 || sharpness > 0 || smoothStrength > 0)) {
