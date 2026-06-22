@@ -363,20 +363,24 @@ function LogoEditor() {
           await page.render({ canvasContext: ctx, viewport: viewport }).promise;
           setupWorkCanvas(canvas);
       } else {
-          // Оборачиваем в Promise, чтобы try/catch/finally дождался загрузки картинки
+          // Оборачиваем в Promise, чтобы гарантированно дождаться загрузки
           await new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-              const canvas = document.createElement('canvas');
-              canvas.width = img.width;
-              canvas.height = img.height;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0);
-              setupWorkCanvas(canvas);
-              URL.revokeObjectURL(img.src);
-              resolve();
+              try { // Защита от зависаний при сбоях внутри
+                  const canvas = document.createElement('canvas');
+                  canvas.width = img.width;
+                  canvas.height = img.height;
+                  const ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0);
+                  setupWorkCanvas(canvas);
+                  URL.revokeObjectURL(img.src);
+                  resolve();
+              } catch (e) {
+                  reject(e);
+              }
             };
-            img.onerror = reject;
+            img.onerror = () => reject(new Error("Format not supported"));
             img.src = URL.createObjectURL(file);
           });
       }
@@ -384,7 +388,7 @@ function LogoEditor() {
       alert(t('err_pdf'));
       console.error(err);
     } finally {
-      setIsProcessing(false); // Выключаем лоадер в любом случае
+      setIsProcessing(false); // Гарантированно выключаем лоадер в любом случае
     }
   };
 
@@ -413,7 +417,11 @@ function LogoEditor() {
     
     setHistory([]); setHistoryIndex(-1);
     
-    baseQualityRef.current = null; stage1Ref.current = null; stage2Ref.current = null;
+    // ФИКС: Правильные референсы
+    baseSmoothStateRef.current = null;
+    baseUpscaleStateRef.current = null;
+    postUpscaleBaseRef.current = null;
+    
     setSmoothStrength(0); setUpscaleSettings(s => ({ ...s, factor: 1 })); setSharpness(0);
 
     saveToHistory(workCanvas);
@@ -1206,7 +1214,7 @@ function LogoEditor() {
               {t('upload')}
             </span>
           )}
-          <input type="file" className="hidden" accept="image/*" onChange={(e) => { 
+          <input type="file" className="hidden" accept="image/*,application/pdf" onChange={(e) => { 
             if (e.target.files[0]) {
               initImage(e.target.files[0]);
               if (window.innerWidth < 768) { setIsLeftOpen(false); setIsRightOpen(true); }
