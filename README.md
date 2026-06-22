@@ -13,7 +13,7 @@ A fast, browser-based logo editing tool built with React, HTML5 Canvas, and Tail
 * **Bilingual:** Instantly switch between English and Russian.
 
 ### 🚀 Try it out
-Live Demo on GitHub Pages: https://dezzmix.github.io/logo-isolator/
+Test on GitHub Pages: https://dezzmix.github.io/logo-isolator/
 
 ### 💻 Local Setup (It's extremely easy)
 You do not need Node.js, npm, or any bundlers.
