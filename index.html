@@ -84,9 +84,15 @@ const applySharpen = (ctx, width, height, mix = 0.5) => {
           if (scy >= 0 && scy < height && scx >= 0 && scx < width) {
             const srcOff = (scy * width + scx) * 4;
             const wt = weights[cy * side + cx];
-            r += copy[srcOff] * wt;
-            g += copy[srcOff + 1] * wt;
-            b += copy[srcOff + 2] * wt;
+            if (copy[srcOff + 3] === 0) {
+                r += copy[dstOff] * wt;
+                g += copy[dstOff + 1] * wt;
+                b += copy[dstOff + 2] * wt;
+            } else {
+                r += copy[srcOff] * wt;
+                g += copy[srcOff + 1] * wt;
+                b += copy[srcOff + 2] * wt;
+            }
           }
         }
       }
@@ -734,7 +740,7 @@ function LogoEditor() {
     }
     
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    
+    tempCanvas.width = 0; tempCanvas.height = 0;
     const cw = containerRef.current?.clientWidth || 800;
     const ch = containerRef.current?.clientHeight || 600;
     setZoom(Math.min(cw / workCanvas.width, ch / workCanvas.height, 1));
@@ -842,6 +848,9 @@ function LogoEditor() {
     
     workCanvas.width = cropWidth; workCanvas.height = cropHeight;
     workCanvas.getContext('2d').drawImage(newCanvas, 0, 0);
+
+    newCanvas.width = 0; 
+    newCanvas.height = 0;
 
     const container = containerRef.current;
     const cw = container ? container.clientWidth : 800;
@@ -989,6 +998,8 @@ function LogoEditor() {
 
     // Применяем текущую резкость (из ползунка) поверх нового апскейла
     applySharpnessFilter(sharpness);
+    tempBaseCanvas.width = 0; tempBaseCanvas.height = 0;
+    tempCanvas.width = 0; tempCanvas.height = 0;
   };
 
   const handleResetUpscale = () => {
@@ -1112,13 +1123,24 @@ function LogoEditor() {
 
     const filename = exportSettings.filename || 'edited_logo';
 
+    // ВАЖНО: Функция очистки GPU. Удаляем холст только если он временный (не равен основному!)
+    const cleanupExportMemory = () => {
+       if (exportCanvas !== workCanvas) {
+           exportCanvas.width = 0;
+           exportCanvas.height = 0;
+       }
+    };
+
     if (exportSettings.format === 'png') {
       const link = document.createElement('a'); link.download = `${filename}.png`; link.href = exportCanvas.toDataURL('image/png'); link.click();
+      cleanupExportMemory(); // <-- Очистка памяти
     } else if (exportSettings.format === 'svg') {
       if (exportSettings.vectorize) {
          setIsProcessing(true);
          const imgData = exportCanvas.getContext('2d').getImageData(0, 0, exportCanvas.width, exportCanvas.height);
          
+         cleanupExportMemory(); // <-- Очистка памяти (пиксели уже скопированы в imgData)
+
          // Выносим тяжелую векторизацию в Web Worker
          const workerCode = `
            importScripts('https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js');
@@ -1166,6 +1188,8 @@ function LogoEditor() {
          const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportCanvas.width}" height="${exportCanvas.height}" viewBox="0 0 ${exportCanvas.width} ${exportCanvas.height}"><image href="${dataUrl}" width="${exportCanvas.width}" height="${exportCanvas.height}" /></svg>`;
          const blob = new Blob([svgString], { type: 'image/svg+xml' });
          const link = document.createElement('a'); link.download = `${filename}.svg`; link.href = URL.createObjectURL(blob); link.click();
+         
+         cleanupExportMemory(); // <-- Очистка памяти
       }
     }
   };
@@ -1214,12 +1238,18 @@ function LogoEditor() {
               {t('upload')}
             </span>
           )}
-          <input type="file" className="hidden" accept="image/*,application/pdf" onChange={(e) => { 
-            if (e.target.files[0]) {
-              initImage(e.target.files[0]);
-              if (window.innerWidth < 768) { setIsLeftOpen(false); setIsRightOpen(true); }
-            } 
-          }} />
+          <input 
+             type="file" 
+             className="hidden" 
+             accept="image/*,application/pdf" 
+             onClick={(e) => { e.target.value = null; }} 
+             onChange={(e) => { 
+               if (e.target.files[0]) {
+                 initImage(e.target.files[0]);
+                 if (window.innerWidth < 768) { setIsLeftOpen(false); setIsRightOpen(true); }
+               } 
+             }} 
+          />
         </label>
         
         {/* Список инструментов */}
@@ -1254,7 +1284,7 @@ function LogoEditor() {
       {/* ХОЛСТ С ПОДДЕРЖКОЙ TOUCH */}
       <div 
         ref={containerRef} 
-        className="flex-grow relative overflow-hidden cursor-crosshair touch-none"
+        className={`flex-grow relative overflow-hidden cursor-crosshair touch-none transition-all duration-300 ${isRightOpen ? 'max-md:mb-[40vh]' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}
         onMouseUp={handlePointerUp}
