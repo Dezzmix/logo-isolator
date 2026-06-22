@@ -21,7 +21,7 @@
 
   <style>
     /* Предотвращаем "резиновый" скролл на мобильных устройствах при масштабировании */
-    body { margin: 0; overscroll-behavior-y: none; touch-action: none; }
+    body { margin: 0; overscroll-behavior-y: none; }
     
     /* Уменьшаем масштаб всех элементов на 10% для мобильных экранов */
     @media (max-width: 767px) {
@@ -350,38 +350,46 @@ function LogoEditor() {
   };
 
   const initImage = async (file) => {
-    const isPdf = file.type === 'application/pdf';
-    if (isPdf) {
-      try {
-        const pdfjs = await loadPdfJs();
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 3.0 }); 
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        
-        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-        setupWorkCanvas(canvas);
-      } catch (err) {
-        alert(t('err_pdf'));
-        console.error(err);
+    setIsProcessing(true); // Включаем лоадер
+    try {
+      const isPdf = file.type === 'application/pdf';
+      if (isPdf) {
+          const pdfjs = await loadPdfJs();
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 3.0 }); 
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          
+          await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+          setupWorkCanvas(canvas);
+      } else {
+          // Оборачиваем в Promise, чтобы try/catch/finally дождался загрузки картинки
+          await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              setupWorkCanvas(canvas);
+              URL.revokeObjectURL(img.src);
+              resolve();
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(file);
+          });
       }
-    } else {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        setupWorkCanvas(canvas);
-		URL.revokeObjectURL(img.src);
-      };
-      img.src = URL.createObjectURL(file);
+    } catch (err) {
+      alert(t('err_pdf'));
+      console.error(err);
+    } finally {
+      setIsProcessing(false); // Выключаем лоадер в любом случае
     }
   };
 
@@ -443,7 +451,11 @@ function LogoEditor() {
     ctx.restore();
   }, [imageLoaded, pan, zoom]);
 
-  useEffect(() => { renderMainCanvas(); }, [renderMainCanvas]);
+  useEffect(() => { 
+    renderMainCanvas(); 
+    window.addEventListener('resize', renderMainCanvas);
+    return () => window.removeEventListener('resize', renderMainCanvas);
+  }, [renderMainCanvas]);
 
   const saveToHistory = (canvas) => {
     const ctx = canvas.getContext('2d');
@@ -658,7 +670,7 @@ function LogoEditor() {
     worker.postMessage({ data: imageData.data, tolerance: wandSettings.tolerance, mode: wandSettings.mode, hex: wandSettings.targetColor.replace('#', '') }, [imageData.data.buffer]);
   };
 
-  // 2. Логика кнопки сравнения (Глаз)
+  // Логика кнопки сравнения (Глаз)
   const handleCompareDown = () => {
     if (!imageLoaded || history.length === 0) return;
     const mainCanvas = mainCanvasRef.current;
@@ -679,34 +691,52 @@ function LogoEditor() {
     ctx.restore();
   };
 
-  // 4. Повороты и Отражения
+  // Повороты и Отражения
   const applyTransform = (type) => {
     const workCanvas = workCanvasRef.current;
     const ctx = workCanvas.getContext('2d');
+    
+    // Сохраняем текущее изображение во временный холст
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = workCanvas.width; tempCanvas.height = workCanvas.height;
+    tempCanvas.width = workCanvas.width; 
+    tempCanvas.height = workCanvas.height;
     tempCanvas.getContext('2d').drawImage(workCanvas, 0, 0);
 
+    // Сбрасываем матрицу смещений перед любыми изменениями
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
     if (type === 'rotate') {
-        workCanvas.width = tempCanvas.height; workCanvas.height = tempCanvas.width;
+        // Изменение ширины/высоты автоматически очищает холст
+        workCanvas.width = tempCanvas.height; 
+        workCanvas.height = tempCanvas.width;
         ctx.translate(workCanvas.width / 2, workCanvas.height / 2);
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(tempCanvas, -tempCanvas.width / 2, -tempCanvas.height / 2);
     } else if (type === 'flipH') {
-        ctx.translate(workCanvas.width, 0); ctx.scale(-1, 1);
+        // Обязательно очищаем холст перед отрисовкой отражения
+        ctx.clearRect(0, 0, workCanvas.width, workCanvas.height);
+        ctx.translate(workCanvas.width, 0); 
+        ctx.scale(-1, 1);
         ctx.drawImage(tempCanvas, 0, 0);
     } else if (type === 'flipV') {
-        ctx.translate(0, workCanvas.height); ctx.scale(1, -1);
+        // Обязательно очищаем холст перед отрисовкой отражения
+        ctx.clearRect(0, 0, workCanvas.width, workCanvas.height);
+        ctx.translate(0, workCanvas.height); 
+        ctx.scale(1, -1);
         ctx.drawImage(tempCanvas, 0, 0);
     }
+    
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     
     const cw = containerRef.current?.clientWidth || 800;
     const ch = containerRef.current?.clientHeight || 600;
     setZoom(Math.min(cw / workCanvas.width, ch / workCanvas.height, 1));
-    setPan({ x: 0, y: 0 }); saveToHistory(workCanvas); renderMainCanvas();
+    setPan({ x: 0, y: 0 }); 
+    saveToHistory(workCanvas); 
+    renderMainCanvas();
   };
 
-  // 5. Добавление подложки (Фона)
+  // Добавление подложки (Фона)
   const applyBackground = () => {
     const workCanvas = workCanvasRef.current;
     const ctx = workCanvas.getContext('2d');
@@ -873,8 +903,11 @@ function LogoEditor() {
     const newWidth = Math.round(baseState.width * factor);
     const newHeight = Math.round(baseState.height * factor);
 
-    if (newWidth > 8000 || newHeight > 8000) {
-       alert(t('err_large'));
+    // Если экран меньше 768px (мобилка), ставим безопасный лимит 4096. Иначе 8000 для ПК.
+    const maxDimension = window.innerWidth < 768 ? 4096 : 8000;
+    if (newWidth > maxDimension || newHeight > maxDimension) {
+       alert(`${t('err_large')} (Max: ${maxDimension}px)`);
+       setUpscaleSettings(s => ({ ...s, factor: 1 })); // Сбрасываем нажатую кнопку
        return;
     }
 
@@ -1071,15 +1104,52 @@ function LogoEditor() {
     if (exportSettings.format === 'png') {
       const link = document.createElement('a'); link.download = `${filename}.png`; link.href = exportCanvas.toDataURL('image/png'); link.click();
     } else if (exportSettings.format === 'svg') {
-      if (exportSettings.vectorize && window.ImageTracer) {
+      if (exportSettings.vectorize) {
          setIsProcessing(true);
-         setTimeout(() => { // Даем React время показать лоадер перед блокировкой потока
-             const imgData = exportCanvas.getContext('2d').getImageData(0, 0, exportCanvas.width, exportCanvas.height);
-             const svgString = window.ImageTracer.imagedataToSVG(imgData, { ltres: 1, qtres: 1, pathomit: 8, rightangleenhance: true, blurradius: 0, blurdelta: 20 });
-             const blob = new Blob([svgString], { type: 'image/svg+xml' });
-             const link = document.createElement('a'); link.download = `${filename}.svg`; link.href = URL.createObjectURL(blob); link.click();
+         const imgData = exportCanvas.getContext('2d').getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+         
+         // Выносим тяжелую векторизацию в Web Worker
+         const workerCode = `
+           importScripts('https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js');
+           self.onmessage = function(e) {
+              try {
+                  const svgstr = ImageTracer.imagedataToSVG(e.data.imgData, { 
+                      ltres: 1, qtres: 1, pathomit: 8, rightangleenhance: true, blurradius: 0, blurdelta: 20 
+                  });
+                  self.postMessage({ success: true, svgstr: svgstr });
+              } catch (error) {
+                  self.postMessage({ success: false, error: error.message });
+              }
+           };
+         `;
+         const blob = new Blob([workerCode], { type: 'application/javascript' });
+         const blobUrl = URL.createObjectURL(blob);
+         const worker = new Worker(blobUrl);
+         
+         worker.onmessage = (e) => {
              setIsProcessing(false);
-         }, 50);
+             worker.terminate();
+             URL.revokeObjectURL(blobUrl);
+             
+             if (e.data.success) {
+                 const blobSvg = new Blob([e.data.svgstr], { type: 'image/svg+xml' });
+                 const link = document.createElement('a'); 
+                 link.download = `${filename}.svg`; 
+                 link.href = URL.createObjectURL(blobSvg); 
+                 link.click();
+             } else {
+                 alert("Ошибка векторизации: " + e.data.error);
+             }
+         };
+         
+         worker.onerror = (err) => {
+             setIsProcessing(false);
+             worker.terminate();
+             URL.revokeObjectURL(blobUrl);
+             alert("Сбой при векторизации. Попробуйте уменьшить разрешение экспорта.");
+         };
+         
+         worker.postMessage({ imgData: imgData });
       } else {
          const dataUrl = exportCanvas.toDataURL('image/png');
          const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportCanvas.width}" height="${exportCanvas.height}" viewBox="0 0 ${exportCanvas.width} ${exportCanvas.height}"><image href="${dataUrl}" width="${exportCanvas.width}" height="${exportCanvas.height}" /></svg>`;
