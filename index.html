@@ -7,6 +7,7 @@
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
   
   <script type="importmap">
     {
@@ -42,7 +43,8 @@
     import { 
       Upload, Wand2, Eraser, Crop, Download, 
       Undo2, Redo2, MousePointer2, Settings2, Image as ImageIcon,
-      Link, Unlink, ArrowRightLeft, Palette, Zap, Contrast, Menu, X
+      Link, Unlink, ArrowRightLeft, Palette, Zap, Contrast, Menu, X,
+      Eye, RotateCw, FlipHorizontal, FlipVertical, Layers
     } from 'https://esm.sh/lucide-react?external=react';
 
 // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
@@ -167,6 +169,7 @@ const translations = {
     btn_download: "Скачать файл",
     hint_canvas_1: "Холст адаптирован под мышь и тачскрин.",
     hint_canvas_2: "Двигайте одним пальцем, используйте колесо для зума."
+	orientation: "Ориентация"
   },
   en: {
     upload: "Upload Image",
@@ -228,6 +231,7 @@ const translations = {
     btn_download: "Download File",
     hint_canvas_1: "Canvas is optimized for mouse and touchscreen.",
     hint_canvas_2: "Move with one finger, use the wheel to zoom."
+	orientation: "Orientation"
   }
 };
 
@@ -270,13 +274,29 @@ function LogoEditor() {
   const [smoothStrength, setSmoothStrength] = useState(0); 
   const [eraserSize, setEraserSize] = useState(20);
   const [recolorHex, setRecolorHex] = useState('#000000');
-  const [exportSettings, setExportSettings] = useState({ 
-    format: 'png', sizePreset: 'original', filename: 'logo_edited',
-    customWidth: 1024, customHeight: 1024, aspectLocked: true
-  });
   const [upscaleSettings, setUpscaleSettings] = useState({ factor: 1, aggressive: false });
   const [sharpness, setSharpness] = useState(0); 
-  
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [bgColorHex, setBgColorHex] = useState('#ffffff');
+  // В настройки экспорта добавлено vectorize: false
+  const [exportSettings, setExportSettings] = useState({ 
+    format: 'png', sizePreset: 'original', filename: 'logo_edited',
+    customWidth: 1024, customHeight: 1024, aspectLocked: true, vectorize: false
+  });
+
+  // Перехватчик закрытия окна (Предотвращает потерю данных)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (imageLoaded && historyIndex > 0) {
+        e.preventDefault();
+        e.returnValue = ''; 
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [imageLoaded, historyIndex]);
+
   const containerRef = useRef(null);
   const mainCanvasRef = useRef(null);
   const workCanvasRef = useRef(null);
@@ -566,62 +586,119 @@ function LogoEditor() {
     renderMainCanvas();
   };
 
+// Оптимизированное удаление фона через Web Worker
   const applyMagicWand = (screenX, screenY) => {
-    // Если было активно сглаживание, фиксируем его перед новым удалением фона
-    if (smoothStrength > 0) {
-      saveToHistory(workCanvasRef.current);
-      baseSmoothStateRef.current = null;
-      setSmoothStrength(0);
-    }
+    if (isProcessing) return; // Блокировка от двойных нажатий
+    if (smoothStrength > 0) { saveToHistory(workCanvasRef.current); baseSmoothStateRef.current = null; setSmoothStrength(0); }
 
     const workCanvas = workCanvasRef.current;
     const ctx = workCanvas.getContext('2d');
     const { width, height } = workCanvas;
-    
     const { x, y } = getWorkCanvasCoords(screenX, screenY);
     if (x < 0 || x >= width || y < 0 || y >= height) return;
 
-    const hex = wandSettings.targetColor.replace('#', '');
-    const tr = parseInt(hex.substring(0, 2), 16), tg = parseInt(hex.substring(2, 4), 16), tb = parseInt(hex.substring(4, 6), 16);
-
+    setIsProcessing(true); // Включаем индикатор загрузки
     const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const tolPercent = wandSettings.tolerance / 100;
-
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] === 0) continue;
-      
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      const dr = r - tr, dg = g - tg, db = b - tb;
-      const distance = Math.sqrt(0.299 * dr*dr + 0.587 * dg*dg + 0.114 * db*db);
-      const distanceRatio = distance / 255;
-
-      if (wandSettings.mode === 'remove') {
-        if (distanceRatio <= tolPercent) {
-          const edgeThreshold = tolPercent * 0.9;
-          if (distanceRatio > edgeThreshold) {
-             const alphaMod = (distanceRatio - edgeThreshold) / (tolPercent - edgeThreshold);
-             data[i + 3] = data[i + 3] * alphaMod;
-          } else {
-             data[i + 3] = 0;
+    
+    // Создаем изолированный поток для тяжелых вычислений
+    const workerCode = `
+      self.onmessage = function(e) {
+          const { data, tolerance, mode, hex } = e.data;
+          const tr = parseInt(hex.substring(0, 2), 16), tg = parseInt(hex.substring(2, 4), 16), tb = parseInt(hex.substring(4, 6), 16);
+          const tolPercent = tolerance / 100;
+          for (let i = 0; i < data.length; i += 4) {
+              if (data[i + 3] === 0) continue;
+              const r = data[i], g = data[i + 1], b = data[i + 2];
+              const dr = r - tr, dg = g - tg, db = b - tb;
+              const distanceRatio = Math.sqrt(0.299 * dr*dr + 0.587 * dg*dg + 0.114 * db*db) / 255;
+              if (mode === 'remove') {
+                  if (distanceRatio <= tolPercent) {
+                      const edgeThreshold = tolPercent * 0.9;
+                      if (distanceRatio > edgeThreshold) data[i+3] = data[i+3] * ((distanceRatio - edgeThreshold) / (tolPercent - edgeThreshold));
+                      else data[i+3] = 0;
+                  }
+              } else {
+                  if (distanceRatio > tolPercent) {
+                      const edgeThreshold = Math.min(1, tolPercent * 1.1 + 0.05);
+                      if (distanceRatio < edgeThreshold) data[i+3] = data[i+3] * ((edgeThreshold - distanceRatio) / (edgeThreshold - tolPercent));
+                      else data[i+3] = 0;
+                  }
+              }
           }
-        }
-      } else {
-        if (distanceRatio > tolPercent) {
-            const edgeThreshold = Math.min(1, tolPercent * 1.1 + 0.05);
-            if (distanceRatio < edgeThreshold) {
-               const alphaMod = (edgeThreshold - distanceRatio) / (edgeThreshold - tolPercent);
-               data[i + 3] = data[i + 3] * alphaMod;
-            } else {
-               data[i + 3] = 0;
-            }
-        }
-      }
-    }
+          self.postMessage({ buffer: data.buffer }, [data.buffer]);
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
+    
+    worker.onmessage = (e) => {
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(e.data.buffer), width, height), 0, 0);
+        saveToHistory(workCanvas); renderMainCanvas();
+        setIsProcessing(false); worker.terminate();
+    };
+    
+    // Передаем буфер пикселей в Worker (Zero-copy передача для максимальной скорости)
+    worker.postMessage({ data: imageData.data, tolerance: wandSettings.tolerance, mode: wandSettings.mode, hex: wandSettings.targetColor.replace('#', '') }, [imageData.data.buffer]);
+  };
 
-    ctx.putImageData(imageData, 0, 0);
-    saveToHistory(workCanvas); // Сохраняем "сырое" удаление
-    renderMainCanvas();
+  // 2. Логика кнопки сравнения (Глаз)
+  const handleCompareDown = () => {
+    if (!imageLoaded || history.length === 0) return;
+    const mainCanvas = mainCanvasRef.current;
+    const ctx = mainCanvas.getContext('2d');
+    
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+    const pattern = ctx.createPattern(cachedPatternCanvas, 'repeat');
+    ctx.fillStyle = pattern; ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+    ctx.translate(mainCanvas.width / 2 + pan.x, mainCanvas.height / 2 + pan.y);
+    ctx.scale(zoom, zoom);
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = history[0].width; tempCanvas.height = history[0].height;
+    tempCanvas.getContext('2d').putImageData(history[0].data, 0, 0);
+    ctx.drawImage(tempCanvas, -tempCanvas.width / 2, -tempCanvas.height / 2);
+    ctx.restore();
+  };
+
+  // 4. Повороты и Отражения
+  const applyTransform = (type) => {
+    const workCanvas = workCanvasRef.current;
+    const ctx = workCanvas.getContext('2d');
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = workCanvas.width; tempCanvas.height = workCanvas.height;
+    tempCanvas.getContext('2d').drawImage(workCanvas, 0, 0);
+
+    if (type === 'rotate') {
+        workCanvas.width = tempCanvas.height; workCanvas.height = tempCanvas.width;
+        ctx.translate(workCanvas.width / 2, workCanvas.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(tempCanvas, -tempCanvas.width / 2, -tempCanvas.height / 2);
+    } else if (type === 'flipH') {
+        ctx.translate(workCanvas.width, 0); ctx.scale(-1, 1);
+        ctx.drawImage(tempCanvas, 0, 0);
+    } else if (type === 'flipV') {
+        ctx.translate(0, workCanvas.height); ctx.scale(1, -1);
+        ctx.drawImage(tempCanvas, 0, 0);
+    }
+    
+    const cw = containerRef.current?.clientWidth || 800;
+    const ch = containerRef.current?.clientHeight || 600;
+    setZoom(Math.min(cw / workCanvas.width, ch / workCanvas.height, 1));
+    setPan({ x: 0, y: 0 }); saveToHistory(workCanvas); renderMainCanvas();
+  };
+
+  // 5. Добавление подложки (Фона)
+  const applyBackground = () => {
+    const workCanvas = workCanvasRef.current;
+    const ctx = workCanvas.getContext('2d');
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-over'; // Рисуем ПОД существующими пикселями
+    ctx.fillStyle = bgColorHex;
+    ctx.fillRect(0, 0, workCanvas.width, workCanvas.height);
+    ctx.restore();
+    saveToHistory(workCanvas); renderMainCanvas();
   };
 
   // Live-Preview Сглаживание (Не накручивается, отталкивается от базы)
@@ -975,18 +1052,23 @@ function LogoEditor() {
     const filename = exportSettings.filename || 'edited_logo';
 
     if (exportSettings.format === 'png') {
-      const link = document.createElement('a');
-      link.download = `${filename}.png`;
-      link.href = exportCanvas.toDataURL('image/png');
-      link.click();
+      const link = document.createElement('a'); link.download = `${filename}.png`; link.href = exportCanvas.toDataURL('image/png'); link.click();
     } else if (exportSettings.format === 'svg') {
-      const dataUrl = exportCanvas.toDataURL('image/png');
-      const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportCanvas.width}" height="${exportCanvas.height}" viewBox="0 0 ${exportCanvas.width} ${exportCanvas.height}"><image href="${dataUrl}" width="${exportCanvas.width}" height="${exportCanvas.height}" /></svg>`;
-      const blob = new Blob([svgString], { type: 'image/svg+xml' });
-      const link = document.createElement('a');
-      link.download = `${filename}.svg`;
-      link.href = URL.createObjectURL(blob);
-      link.click();
+      if (exportSettings.vectorize && window.ImageTracer) {
+         setIsProcessing(true);
+         setTimeout(() => { // Даем React время показать лоадер перед блокировкой потока
+             const imgData = exportCanvas.getContext('2d').getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+             const svgString = window.ImageTracer.imagedataToSVG(imgData, { ltres: 1, qtres: 1, pathomit: 8, rightangleenhance: true, blurradius: 0, blurdelta: 20 });
+             const blob = new Blob([svgString], { type: 'image/svg+xml' });
+             const link = document.createElement('a'); link.download = `${filename}.svg`; link.href = URL.createObjectURL(blob); link.click();
+             setIsProcessing(false);
+         }, 50);
+      } else {
+         const dataUrl = exportCanvas.toDataURL('image/png');
+         const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportCanvas.width}" height="${exportCanvas.height}" viewBox="0 0 ${exportCanvas.width} ${exportCanvas.height}"><image href="${dataUrl}" width="${exportCanvas.width}" height="${exportCanvas.height}" /></svg>`;
+         const blob = new Blob([svgString], { type: 'image/svg+xml' });
+         const link = document.createElement('a'); link.download = `${filename}.svg`; link.href = URL.createObjectURL(blob); link.click();
+      }
     }
   };
 
@@ -1050,8 +1132,26 @@ function LogoEditor() {
             <ToolButton icon={<Palette size={20} />} label={isLeftOpen ? t('effects') : ''} active={activeTool === 'effects'} onClick={() => handleToolChange('effects')} />
             <ToolButton icon={<Zap size={20} />} label={isLeftOpen ? t('upscale') : ''} active={activeTool === 'upscale'} onClick={() => handleToolChange('upscale')} />
             <ToolButton icon={<Download size={20} />} label={isLeftOpen ? t('export') : ''} active={activeTool === 'export'} onClick={() => handleToolChange('export')} />
+			<div className={`flex gap-2 my-2 transition-all duration-200 ${isLeftOpen ? 'mx-4' : 'mx-auto w-12 flex-col'}`}>
+              <button onClick={undo} disabled={historyIndex <= 0} className={`p-3 rounded-xl flex items-center justify-center shrink-0 ${historyIndex <= 0 ? 'opacity-30 cursor-not-allowed bg-gray-800 text-gray-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white shadow-lg'} ${isLeftOpen ? 'flex-1' : 'w-12 h-12'}`}>
+                <Undo2 size={20} />
+              </button>
+              <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-3 rounded-xl flex items-center justify-center shrink-0 ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed bg-gray-800 text-gray-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white shadow-lg'} ${isLeftOpen ? 'flex-1' : 'w-12 h-12'}`}>
+                <Redo2 size={20} />
+              </button>
+            </div>
         </div>
       </div>
+
+      {/* ИНДИКАТОР ЗАГРУЗКИ (WEB WORKER / ВЕКТОР) */}
+      {isProcessing && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-gray-800 p-4 rounded-2xl shadow-2xl flex flex-col items-center">
+                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                <span className="text-sm font-medium text-gray-200">Обработка...</span>
+            </div>
+        </div>
+      )}
 
       {/* ХОЛСТ С ПОДДЕРЖКОЙ TOUCH */}
       <div 
@@ -1067,6 +1167,20 @@ function LogoEditor() {
         onTouchCancel={handlePointerUp}
         onWheel={handleWheel}
       >
+
+        {/* КНОПКА СРАВНЕНИЯ (ГЛАЗ) */}
+        {imageLoaded && (
+            <button 
+                onPointerDown={handleCompareDown}
+                onPointerUp={() => { if (imageLoaded) renderMainCanvas(); }}
+                onPointerLeave={() => { if (imageLoaded) renderMainCanvas(); }}
+                className="absolute top-4 right-16 z-40 p-2.5 bg-gray-800 border border-gray-700 shadow-lg rounded-xl text-gray-200 hover:bg-gray-700 select-none touch-none md:right-4"
+                title="Сравнить с оригиналом (Удерживать)"
+            >
+                <Eye size={24} />
+            </button>
+        )}
+
         {!imageLoaded && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 pointer-events-none">
             <ImageIcon size={64} className="mb-4 opacity-50" />
@@ -1150,6 +1264,15 @@ function LogoEditor() {
                   </div>
                   <hr className="border-gray-700" />
                   <div>
+                    <h3 className="text-sm font-medium text-gray-300 mb-2">{t('orientation')}</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                       <button onClick={() => applyTransform('rotate')} className="py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg flex justify-center items-center text-gray-300 shadow-lg"><RotateCw size={18}/></button>
+                       <button onClick={() => applyTransform('flipH')} className="py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg flex justify-center items-center text-gray-300 shadow-lg"><FlipHorizontal size={18}/></button>
+                       <button onClick={() => applyTransform('flipV')} className="py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg flex justify-center items-center text-gray-300 shadow-lg"><FlipVertical size={18}/></button>
+                    </div>
+                  </div>
+                  <hr className="border-gray-700" />
+                  <div>
                     <h3 className="text-sm font-medium text-gray-300 mb-2">{t('eraser')}</h3>
                     <p className="text-xs text-gray-400 mb-3">{t('hint_eraser')}</p>
                     <div>
@@ -1174,6 +1297,18 @@ function LogoEditor() {
                     <button onClick={applySmartBW} className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition shadow-lg flex justify-center items-center space-x-2">
                       <Contrast size={16} />
                       <span>{t('btn_bw')}</span>
+                    </button>
+                  </div>
+                  <hr className="border-gray-700" />
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-300 mb-2">Цветной фон (Подложка)</h3>
+                    <p className="text-xs text-gray-400 mb-3">Заливает прозрачные области слоем выбранного цвета.</p>
+                    <div className="flex items-center space-x-3 mb-4">
+                      <input type="color" value={bgColorHex} onChange={(e) => setBgColorHex(e.target.value)} className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0" />
+                      <span className="text-sm font-mono uppercase bg-gray-900 px-2 py-1 rounded border border-gray-700">{bgColorHex}</span>
+                    </div>
+                    <button onClick={applyBackground} className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition shadow-lg flex justify-center items-center space-x-2">
+                      <Layers size={16} /> <span>Добавить фон</span>
                     </button>
                   </div>
                   <hr className="border-gray-700" />
@@ -1236,6 +1371,15 @@ function LogoEditor() {
                       <option value="png">{t('fmt_png')}</option>
                     </select>
                     {exportSettings.format === 'svg' && (<p className="text-[10px] text-gray-500 mt-1 leading-tight">{t('hint_svg')}</p>)}
+                    {exportSettings.format === 'svg' && (
+                      <div className="mt-3 flex items-start space-x-2 p-3 bg-gray-900 border border-gray-700 rounded-lg">
+                         <input type="checkbox" id="vectorizeCheck" checked={exportSettings.vectorize} onChange={e => setExportSettings({...exportSettings, vectorize: e.target.checked})} className="mt-0.5 w-4 h-4 cursor-pointer text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
+                         <label htmlFor="vectorizeCheck" className="text-xs text-gray-300 cursor-pointer flex-1">
+                           <span className="font-semibold block">Истинная векторизация</span>
+                           <span className="text-[10px] text-gray-500">Автоматически превращает пиксели в математические кривые (может занять время на слабых смартфонах).</span>
+                         </label>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs text-gray-400 mb-1 block">{t('size')}</label>
