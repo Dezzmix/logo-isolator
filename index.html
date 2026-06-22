@@ -283,6 +283,7 @@ function LogoEditor() {
   
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const absoluteOriginalRef = useRef(null);
 
   const [wandSettings, setWandSettings] = useState({ tolerance: 30, mode: 'remove', targetColor: '#ffffff' });
   const [smoothStrength, setSmoothStrength] = useState(0); 
@@ -324,21 +325,15 @@ function LogoEditor() {
   
   // Централизованная смена инструментов (Фиксирует эффекты перед переходом)
   const handleToolChange = (newTool) => {
-    // Авто-закрытие панели параметров на мобильных при выборе инструмента
     if (window.innerWidth < 768) {
       setIsLeftOpen(false);
       setIsRightOpen(true);
     }
-    // Если уходим с вкладки со сглаживанием и оно активно — сохраняем результат
-    if (activeTool === 'wand' && smoothStrength > 0) {
-      saveToHistory(workCanvasRef.current);
-    }
-    // Если уходим с Upscale и он применялся — сохраняем результат
-    if (activeTool === 'upscale' && (upscaleSettings.factor > 1 || sharpness > 0)) {
+    // Сглаживание теперь живет во вкладке Upscale, сохраняем историю при уходе из нее
+    if (activeTool === 'upscale' && (upscaleSettings.factor > 1 || sharpness > 0 || smoothStrength > 0)) {
       saveToHistory(workCanvasRef.current);
     }
 
-    // Сброс локальных превью
     baseSmoothStateRef.current = null;
     setSmoothStrength(0);
     baseUpscaleStateRef.current = null;
@@ -402,6 +397,12 @@ function LogoEditor() {
     ctx.clearRect(0, 0, workCanvas.width, workCanvas.height);
     ctx.drawImage(sourceCanvas, 0, 0);
     
+    // Сохраняем абсолютный оригинал один раз при загрузке картинки
+    absoluteOriginalRef.current = {
+        width: sourceCanvas.width, height: sourceCanvas.height,
+        data: ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height)
+    };
+    
     setExportSettings(s => ({...s, customWidth: sourceCanvas.width, customHeight: sourceCanvas.height}));
     setImageLoaded(true);
     const container = containerRef.current;
@@ -410,15 +411,10 @@ function LogoEditor() {
     setZoom(Math.min(cw / sourceCanvas.width, ch / sourceCanvas.height, 1));
     setPan({ x: 0, y: 0 });
     
-    setHistory([]);
-    setHistoryIndex(-1);
+    setHistory([]); setHistoryIndex(-1);
     
-    baseSmoothStateRef.current = null;
-    baseUpscaleStateRef.current = null;
-    postUpscaleBaseRef.current = null;
-    setSmoothStrength(0);
-    setUpscaleSettings(s => ({ ...s, factor: 1 }));
-    setSharpness(0);
+    baseQualityRef.current = null; stage1Ref.current = null; stage2Ref.current = null;
+    setSmoothStrength(0); setUpscaleSettings(s => ({ ...s, factor: 1 })); setSharpness(0);
 
     saveToHistory(workCanvas);
     renderMainCanvas();
@@ -464,7 +460,9 @@ function LogoEditor() {
     setHistory(prev => {
         const validHistory = prev.slice(0, historyIndex + 1);
         validHistory.push({ width: canvas.width, height: canvas.height, data: imageData });
-        if (validHistory.length > 15) validHistory.shift();
+        // ФИКС ОЗУ: На мобильных храним только 5 шагов (иначе Safari вылетит от нехватки памяти)
+        const maxHistory = window.innerWidth < 768 ? 5 : 15;
+        if (validHistory.length > maxHistory) validHistory.shift();
         setHistoryIndex(validHistory.length - 1);
         return validHistory;
     });
@@ -672,7 +670,7 @@ function LogoEditor() {
 
   // Логика кнопки сравнения (Глаз)
   const handleCompareDown = () => {
-    if (!imageLoaded || history.length === 0) return;
+    if (!imageLoaded || !absoluteOriginalRef.current) return;
     const mainCanvas = mainCanvasRef.current;
     const ctx = mainCanvas.getContext('2d');
     
@@ -685,8 +683,9 @@ function LogoEditor() {
     ctx.scale(zoom, zoom);
     
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = history[0].width; tempCanvas.height = history[0].height;
-    tempCanvas.getContext('2d').putImageData(history[0].data, 0, 0);
+    tempCanvas.width = absoluteOriginalRef.current.width; 
+    tempCanvas.height = absoluteOriginalRef.current.height;
+    tempCanvas.getContext('2d').putImageData(absoluteOriginalRef.current.data, 0, 0);
     ctx.drawImage(tempCanvas, -tempCanvas.width / 2, -tempCanvas.height / 2);
     ctx.restore();
   };
@@ -985,20 +984,24 @@ function LogoEditor() {
   };
 
   const handleResetUpscale = () => {
-    if (baseUpscaleStateRef.current) {
+    const baseState = baseUpscaleStateRef.current || baseSmoothStateRef.current;
+    if (baseState) {
         const workCanvas = workCanvasRef.current;
-        workCanvas.width = baseUpscaleStateRef.current.width;
-        workCanvas.height = baseUpscaleStateRef.current.height;
-        workCanvas.getContext('2d').putImageData(baseUpscaleStateRef.current.data, 0, 0);
+        workCanvas.width = baseState.width;
+        workCanvas.height = baseState.height;
+        workCanvas.getContext('2d').putImageData(baseState.data, 0, 0);
         
         baseUpscaleStateRef.current = null;
         postUpscaleBaseRef.current = null;
+        baseSmoothStateRef.current = null;
         setUpscaleSettings({ factor: 1, aggressive: false });
         setSharpness(0);
+        setSmoothStrength(0);
+        
         const container = containerRef.current;
-		const cw = container ? container.clientWidth : 800;
-		const ch = container ? container.clientHeight : 600;
-		setZoom(Math.min(cw / workCanvas.width, ch / workCanvas.height, 1));
+        const cw = container ? container.clientWidth : 800;
+        const ch = container ? container.clientHeight : 600;
+        setZoom(Math.min(cw / workCanvas.width, ch / workCanvas.height, 1));
         
         renderMainCanvas();
     }
@@ -1323,22 +1326,6 @@ function LogoEditor() {
                   <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-800/50">
                     <p className="text-xs text-blue-200">{t('hint_pipette')}</p>
                   </div>
-
-                  <hr className="border-gray-700 my-4" />
-                  
-                  <div>
-                    <div className="flex justify-between text-xs text-gray-300 mb-1 font-medium">
-                      <label>{t('smooth_edges')}</label>
-                      <span className="text-blue-400">{smoothStrength}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mb-2 leading-relaxed">{t('hint_smooth')}</p>
-                    <input 
-                      type="range" min="0" max="10" 
-                      value={smoothStrength} 
-                      onChange={handleSmoothChange} 
-                      className="w-full accent-blue-500 cursor-grab active:cursor-grabbing" 
-                    />
-                  </div>
                 </div>
               )}
 
@@ -1415,6 +1402,7 @@ function LogoEditor() {
                 <div className="space-y-5 animate-in fade-in">
                   <h3 className="text-sm font-medium text-gray-300">{t('upscale_title')}</h3>
                   <p className="text-xs text-gray-400">{t('hint_upscale')}</p>
+                  
                   <div className="flex items-center space-x-2 p-2 bg-gray-900 border border-gray-700 rounded-lg mb-2">
                     <input type="checkbox" id="aggressiveMode" checked={upscaleSettings.aggressive} onChange={e => { const isAggressive = e.target.checked; setUpscaleSettings(s => ({...s, aggressive: isAggressive})); if (upscaleSettings.factor > 1) { applyUpscaleToggle(upscaleSettings.factor, isAggressive); } }} className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer" />
                     <label htmlFor="aggressiveMode" className="text-xs text-gray-300 cursor-pointer flex-1">
@@ -1426,7 +1414,22 @@ function LogoEditor() {
                     <button onClick={() => applyUpscaleToggle(2)} className={`py-2 rounded-lg text-sm font-bold transition shadow-lg ${upscaleSettings.factor === 2 ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>{t('btn_x2')}</button>
                     <button onClick={() => applyUpscaleToggle(4)} className={`py-2 rounded-lg text-sm font-bold transition shadow-lg ${upscaleSettings.factor === 4 ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>{t('btn_x4')}</button>
                   </div>
+                  
                   <hr className="border-gray-700 my-2" />
+
+                  {/* Сглаживание */}
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-300 mb-1 font-medium">
+                      <label>{t('smooth_edges')}</label>
+                      <span className="text-blue-400">{smoothStrength}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mb-2 leading-relaxed">{t('hint_smooth')}</p>
+                    <input type="range" min="0" max="10" value={smoothStrength} onChange={handleSmoothChange} className="w-full accent-blue-500 cursor-grab active:cursor-grabbing" />
+                  </div>
+
+                  <hr className="border-gray-700 my-2" />
+                  
+                  {/* Резкость */}
                   <div>
                     <div className="flex justify-between text-xs text-gray-300 mb-1 font-medium">
                       <label>{t('sharpness')}</label>
@@ -1435,7 +1438,8 @@ function LogoEditor() {
                     <p className="text-[10px] text-gray-500 mb-2 leading-relaxed">{t('hint_sharp')}</p>
                     <input type="range" min="0" max="100" value={sharpness} onChange={handleSharpnessChange} className="w-full accent-blue-500 cursor-grab active:cursor-grabbing" />
                   </div>
-                  {(upscaleSettings.factor > 1 || sharpness > 0) && (
+                  
+                  {(upscaleSettings.factor > 1 || sharpness > 0 || smoothStrength > 0) && (
                      <button onClick={handleResetUpscale} className="w-full py-2 mt-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 rounded-lg text-sm font-medium transition">{t('btn_reset')}</button>
                   )}
                   <div className="mt-4 p-3 bg-gray-900 rounded-lg text-xs font-mono text-center border border-gray-700">
